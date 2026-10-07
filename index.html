@@ -92,6 +92,7 @@ dialog::backdrop { background:rgba(0,0,0,.65); }
   </section>
 
   <section class="card" id="recipeCard"></section>
+  <div class="small" style="padding:0 8px">Touch and hold (or tap) an ingredient to adjust the entire recipe proportionally. <button id="adjustReset" hidden>Reset adjustment</button></div>
 
   <section class="card">
     <h3>My notes</h3>
@@ -158,6 +159,8 @@ let scale = Number(localStorage.drinkScale || 1);
 let showWeights = localStorage.showWeights === "true";
 let currentName = localStorage.currentDrink || BUILT_INS[0].name;
 let editOriginalName = null;
+let adjustment = null;
+let activeIngredientIndex = -1;
 
 function $(id) { return document.getElementById(id); }
 function customRecipes() { try { return JSON.parse(localStorage.customDrinkRecipes || "[]"); } catch(e) { return []; } }
@@ -179,7 +182,7 @@ function plural(unit, amount) {
   if (unit === "dash") return "dashes";
   return unit + "s";
 }
-function scaledAmount(ing) { return Number(ing.amount) * scale; }
+function scaledAmount(ing) { return Number(ing.amount) * (adjustment && adjustment.recipe===currentName ? adjustment.multiplier : scale); }
 function volumeToGrams(ing, amount) {
   if (!ing.sg) return null;
   if (ing.unit === "oz" || ing.unit === "part") return amount * OZ_ML * ing.sg;
@@ -204,16 +207,17 @@ function renderSelect() {
 function escapeHtml(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function renderScale() {
   $("scaleBtns").innerHTML = [1,2,3,4,5,6].map(n => `<button class="${n===scale?'active':''}" data-n="${n}">${n}×</button>`).join("");
-  document.querySelectorAll("#scaleBtns button").forEach(b => b.onclick = () => { scale = Number(b.dataset.n); localStorage.drinkScale = scale; render(); });
+  document.querySelectorAll("#scaleBtns button").forEach(b => b.onclick = () => { scale = Number(b.dataset.n); localStorage.drinkScale = scale; adjustment=null; render(); });
 }
 function renderRecipe() {
   const r = findRecipe(currentName);
   currentName = r.name;
   localStorage.currentDrink = currentName;
-  $("batchLabel").textContent = `${scale} drink${scale>1?"s":""}`;
+  const effectiveScale = adjustment && adjustment.recipe===currentName ? adjustment.multiplier : scale;
+  $("batchLabel").textContent = `${fmt(effectiveScale)} drink${Math.abs(effectiveScale-1)>0.001?"s":""}`;
   $("personalNotes").value = localStorage["drinkNotes:"+currentName] || "";
-  const rows = (r.ingredients||[]).map(ing => `
-    <tr>
+  const rows = (r.ingredients||[]).map((ing,index) => `
+    <tr class="ingredient-row" data-index="${index}" style="cursor:pointer;touch-action:pan-y;-webkit-user-select:none;user-select:none">
       <td>
         ${escapeHtml(ing.name)} ${ing.optional ? '<span class="small">(optional)</span>' : ''}
         ${ing.note ? `<div class="small">${escapeHtml(ing.note)}</div>` : ''}
@@ -237,13 +241,71 @@ function renderRecipe() {
     <div class="note">${escapeHtml(r.instructions || "No instructions yet.")}</div>
     ${r.original_notes ? `<details><summary>Original / ambiguous notes</summary><div class="note small" style="margin-top:8px">${escapeHtml(r.original_notes)}</div></details>` : ""}
   `;
+  attachIngredientHandlers();
 }
 function render() {
   $("weightToggle").checked = showWeights;
   renderSelect();
   renderScale();
   renderRecipe();
+  let reset=$("adjustReset"); if(reset)reset.hidden=!(adjustment&&adjustment.recipe===currentName);
 }
+function attachIngredientHandlers() {
+  document.querySelectorAll(".ingredient-row").forEach(row => {
+    let timer=null, started=false, x=0,y=0;
+    const clear=()=>{ if(timer){clearTimeout(timer);timer=null;} };
+    row.addEventListener("pointerdown",e=>{if(e.button!==0)return; started=false;x=e.clientX;y=e.clientY;clear();timer=setTimeout(()=>{started=true;openIngredientAdjustment(Number(row.dataset.index));},500);});
+    row.addEventListener("pointermove",e=>{if(Math.hypot(e.clientX-x,e.clientY-y)>12)clear();});
+    ["pointerup","pointercancel","pointerleave"].forEach(event=>row.addEventListener(event,clear));
+    row.addEventListener("contextmenu",e=>{e.preventDefault();clear();if(!started)openIngredientAdjustment(Number(row.dataset.index));});
+    row.addEventListener("click",()=>{ if(!started)openIngredientAdjustment(Number(row.dataset.index));started=false;});
+  });
+}
+function ingredientOunces(ing,amount) {
+  if(ing.unit==="oz")return amount;
+  if(ing.unit==="ml")return amount/OZ_ML;
+  if(ing.unit==="tsp")return amount*TSP_ML/OZ_ML;
+  if(ing.unit==="g" && ing.sg)return amount/ing.sg/OZ_ML;
+  return null;
+}
+function openIngredientAdjustment(index) {
+  const ing=findRecipe(currentName).ingredients[index];
+  const base=Number(ing.amount), actual=scaledAmount(ing);
+  if(!(base>0))return;
+  activeIngredientIndex=index;
+  const vol=ingredientOunces(ing,actual);
+  const grams=ing.unit==="g" ? actual : volumeToGrams(ing,actual);
+  $("ingredientTitle").textContent=ing.name;
+  $("adjustVolume").value=vol===null?"":Number(vol.toFixed(3));
+  $("adjustWeight").value=grams===null?"":Number(grams.toFixed(2));
+  $("adjustVolume").disabled=vol===null;
+  $("adjustWeight").disabled=grams===null;
+  $("adjustHint").textContent=vol===null&&grams===null?"This ingredient has no volume/weight conversion.": "Approximate conversions; changing either field updates the other.";
+  $("adjustOk").disabled=vol===null&&grams===null;
+  $("ingredientDialog").showModal();
+}
+$("adjustVolume").addEventListener("input",()=>{
+  const ing=findRecipe(currentName).ingredients[activeIngredientIndex],oz=Number($("adjustVolume").value);
+  $("adjustWeight").value=$("adjustVolume").value!==""&&ing.sg?Number((oz*OZ_ML*ing.sg).toFixed(2)):"";
+});
+$("adjustWeight").addEventListener("input",()=>{
+  const ing=findRecipe(currentName).ingredients[activeIngredientIndex],g=Number($("adjustWeight").value);
+  $("adjustVolume").value=$("adjustWeight").value!==""&&ing.sg?Number((g/ing.sg/OZ_ML).toFixed(3)):"";
+});
+$("adjustCancel").onclick=()=>$("ingredientDialog").close();
+$("adjustOk").onclick=()=>{
+  const ing=findRecipe(currentName).ingredients[activeIngredientIndex];
+  const v=$("adjustVolume").value,w=$("adjustWeight").value;
+  let amount=null;
+  if(v!==""&&!$("adjustVolume").disabled){
+    const oz=Number(v); amount=ing.unit==="oz"?oz:ing.unit==="ml"?oz*OZ_ML:ing.unit==="tsp"?oz*OZ_ML/TSP_ML:ing.unit==="g"&&ing.sg?oz*OZ_ML*ing.sg:null;
+  }else if(w!==""&&!$("adjustWeight").disabled){
+    const g=Number(w); amount=ing.unit==="g"?g:ing.unit==="oz"&&ing.sg?g/ing.sg/OZ_ML:ing.unit==="ml"&&ing.sg?g/ing.sg:ing.unit==="tsp"&&ing.sg?g/ing.sg/TSP_ML:null;
+  }
+  if(!(amount>0)||!Number.isFinite(amount)){alert("Enter a positive amount.");return;}
+  adjustment={recipe:currentName,multiplier:amount/Number(ing.amount)};
+  $("ingredientDialog").close();renderRecipe();
+};
 function recipeToLines(r) {
   return (r.ingredients||[]).map(i => [i.amount, i.unit, i.name, i.sg ?? "", i.note ?? ""].join(" | ").replace(/( \| )+$/,"")).join("\n");
 }
@@ -316,8 +378,9 @@ function importData() {
   } catch(e) { alert("Could not parse backup JSON."); }
 }
 
-$("recipeSelect").onchange = e => { currentName = e.target.value; renderRecipe(); };
-$("search").oninput = render;
+$("adjustReset").onclick=()=>{adjustment=null;render();};
+$("recipeSelect").onchange = e => { currentName = e.target.value; adjustment=null; renderRecipe(); };
+$("search").oninput = () => { adjustment=null; render(); };
 $("weightToggle").onchange = e => { showWeights = e.target.checked; localStorage.showWeights = showWeights; renderRecipe(); };
 $("personalNotes").oninput = e => { localStorage["drinkNotes:"+currentName] = e.target.value; };
 $("editBtn").onclick = () => openEditor(false);
