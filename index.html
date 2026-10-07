@@ -109,6 +109,7 @@ dialog::backdrop { background:rgba(0,0,0,.65); }
   <section class="card small">
     <b>Install on iPhone:</b> open this file in Safari → Share → Add to Home Screen. Added recipes and notes save locally on that iPhone/browser.
     <div class="row" style="margin-top:10px">
+      <button id="sendUpdatesBtn" class="primary">Send updates</button>
       <button id="exportBtn" class="ghost">Export backup</button>
       <button id="importBtn" class="ghost">Import backup</button>
     </div>
@@ -400,11 +401,43 @@ function deleteRecipe() {
   $("editor").close();
   render();
 }
-function exportData() {
-  const backup = {
-    customRecipes: customRecipes(),
-    notes: Object.fromEntries(Object.keys(localStorage).filter(k=>k.startsWith("drinkNotes:")).map(k=>[k, localStorage[k]]))
+function makeBackup() {
+  return {
+    format:"cocktails-updates", version:1,
+    exportedAt:new Date().toISOString(),
+    deviceLabel:localStorage.cocktailDeviceLabel || "",
+    customRecipes:customRecipes(),
+    notes:Object.fromEntries(Object.keys(localStorage).filter(k=>k.startsWith("drinkNotes:")).map(k=>[k,localStorage[k]]))
   };
+}
+async function sendUpdates() {
+  let label=localStorage.cocktailDeviceLabel || "";
+  if(!label){
+    const entered=prompt("Name this device (for example, Tom iPhone or Kitchen iPad):","");
+    if(entered===null)return;
+    label=entered.trim() || "Unnamed device";
+    localStorage.cocktailDeviceLabel=label;
+  }
+  const data=makeBackup();
+  const json=JSON.stringify(data,null,2);
+  const date=new Date().toISOString().slice(0,10);
+  const filename="cocktails-updates-"+date+".json";
+  const file=new File([json],filename,{type:"application/json"});
+  try {
+    if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:"Cocktails updates — "+label,text:"Cocktails recipes and notes from "+label});
+      return;
+    }
+  } catch(err) { if(err.name==="AbortError")return; }
+  // Fallback for browsers that do not support sharing files.
+  const url=URL.createObjectURL(file);
+  const link=document.createElement("a");link.href=url;link.download=filename;
+  document.body.appendChild(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),30000);
+  alert("Updates JSON downloaded. Attach it to an email or upload it to our chat.");
+}
+function exportData() {
+  const backup = makeBackup();
   $("backupText").value = JSON.stringify(backup, null, 2);
   $("backupDialog").showModal();
 }
@@ -429,6 +462,7 @@ $("saveBtn").onclick = saveRecipe;
 $("addIngredientBtn").onclick=()=>{readIngredientRows();editorIngredients.push({name:"",amount:null,unit:"oz",note:""});renderIngredientEditor();};
 $("deleteBtn").onclick = deleteRecipe;
 $("exportBtn").onclick = exportData;
+$("sendUpdatesBtn").onclick = sendUpdates;
 $("importBtn").onclick = () => { $("backupText").value = ""; $("backupDialog").showModal(); };
 $("copyBackup").onclick = async () => { await navigator.clipboard.writeText($("backupText").value); $("copyBackup").textContent="Copied"; setTimeout(()=>$("copyBackup").textContent="Copy export",1200); };
 $("loadBackup").onclick = importData;
