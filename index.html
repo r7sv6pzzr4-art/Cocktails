@@ -72,6 +72,18 @@ dialog::backdrop { background:rgba(0,0,0,.65); }
 .ingredient-edit-footer { display:flex; gap:8px; align-items:end; }
 .density-controls { display:grid; grid-template-columns:minmax(0,1fr) 110px; gap:9px; margin-top:6px; }
 .density-controls select,.density-controls input { width:100%; min-width:0; }
+.ingredient-edit-grid input,.ingredient-edit-grid select,.density-controls input,.density-controls select { height:46px; min-height:46px; padding:10px; box-sizing:border-box; }
+.ingredient-preview { border:1px solid var(--line); border-radius:13px; overflow:hidden; margin-top:10px; }
+.ingredient-preview-row { display:flex; align-items:center; gap:9px; padding:10px 12px; border-bottom:1px solid var(--line); }
+.ingredient-preview-row:last-child { border-bottom:0; }
+.ingredient-preview-text { flex:1; min-width:0; }
+.ingredient-preview-text strong { display:block; font-size:14px; }
+.ingredient-preview-text .small { overflow-wrap:anywhere; }
+.ingredient-preview-row button { min-height:34px; padding:6px 11px; font-size:13px; }
+.ingredient-entry { border:1px solid var(--line); border-radius:14px; padding:12px; margin-top:13px; background:var(--card2); }
+.ingredient-entry h3 { margin:0; }
+.ingredient-entry .ingredient-edit-row { padding:0; border:0; margin:10px 0 0; background:transparent; }
+.ingredient-entry .ie-remove { display:none; }
 .density-hint { margin-top:5px; font-size:11px; color:var(--muted); }
 .ingredient-edit-footer input { flex:1; }
 @media(max-width:400px) { .ingredient-edit-grid { grid-template-columns:minmax(0,1fr) 82px 72px; gap:5px; } .ingredient-edit-row {padding:8px;} .ingredient-edit-row input,.ingredient-edit-row select {padding:7px;} }
@@ -174,10 +186,13 @@ dialog { box-shadow:0 24px 80px rgba(0,0,0,.5); }
   <div class="modal">
     <h2 id="editorTitle">Add recipe</h2>
     <label for="eName">Name</label><input id="eName" style="width:100%" placeholder="Cocktail name">
-    <h3>Ingredients</h3>
-    <div class="small">Enter an ingredient, its amount and unit, and optional notes.</div>
-    <div id="ingredientEditorRows"></div>
-    <button type="button" id="addIngredientBtn" class="ghost" style="margin-top:10px">+ Add ingredient</button>
+    <h3>Recipe ingredients</h3>
+    <div id="ingredientPreview" class="ingredient-preview"></div>
+    <div id="ingredientEntry" class="ingredient-entry">
+      <div class="between"><h3 id="ingredientEntryTitle">Add ingredient</h3><button id="cancelIngredientEdit" type="button" class="ghost hidden">Cancel edit</button></div>
+      <div id="ingredientEditorRows"></div>
+      <button type="button" id="addIngredientBtn" class="primary" style="margin-top:12px;width:100%">+ Add to recipe</button>
+    </div>
     <label for="eInstructions">Instructions (optional)</label><textarea id="eInstructions" placeholder="Shake with ice, strain…"></textarea>
     <label for="eGarnish">Garnish (optional)</label><input id="eGarnish" style="width:100%" placeholder="Lemon twist, mint…">
     <div class="row" style="justify-content:flex-end;margin-top:18px">
@@ -360,6 +375,9 @@ $("adjustOk").onclick=()=>{
 };
 let editorIngredients = [];
 let editorMetadata = {};
+let activeEditorIngredient = null;
+let editingIngredientIndex = -1;
+function emptyIngredient(){return {name:"",amount:null,unit:"oz",note:"",sg:null,densityPreset:""};}
 const DENSITY_PRESETS=[
   ["","Choose density…",null],
   ["spirit","Spirit (~40% ABV)",0.95],
@@ -383,21 +401,64 @@ function knownSG(name){
 }
 function densityApplies(unit){return ["oz","ml","tsp","part"].includes(unit);}
 function readIngredientRows(){
-  document.querySelectorAll("#ingredientEditorRows .ingredient-edit-row").forEach((row,i)=>{
-    const ing=editorIngredients[i];if(!ing)return;
-    ing.name=row.querySelector(".ie-name").value;
-    const v=row.querySelector(".ie-amount").value;
-    ing.amount=v===""?null:Number(v);
-    ing.unit=row.querySelector(".ie-unit").value;
-    ing.note=row.querySelector(".ie-note").value;
-    const sgField=row.querySelector(".ie-sg");
-    const sgText=sgField.value.trim();
-    ing.sg=sgText===""?null:Number(sgText);
-    ing.densityPreset=row.querySelector(".ie-density").value;
+  const row=document.querySelector("#ingredientEditorRows .ingredient-edit-row");
+  if(!row||!activeEditorIngredient)return;
+  const ing=activeEditorIngredient;
+  ing.name=row.querySelector(".ie-name").value;
+  const v=row.querySelector(".ie-amount").value;
+  ing.amount=v===""?null:Number(v);
+  ing.unit=row.querySelector(".ie-unit").value;
+  ing.note=row.querySelector(".ie-note").value;
+  const sgText=row.querySelector(".ie-sg").value.trim();
+  ing.sg=sgText===""?null:Number(sgText);
+  ing.densityPreset=row.querySelector(".ie-density").value;
+}
+function renderIngredientPreview(){
+  $("ingredientPreview").innerHTML=editorIngredients.length?editorIngredients.map((ing,i)=>`
+    <div class="ingredient-preview-row">
+      <div class="ingredient-preview-text">
+        <strong>${escapeHtml(ing.name)} — ${fmt(Number(ing.amount))} ${escapeHtml(ing.unit)}</strong>
+        ${ing.note?`<div class="small">${escapeHtml(ing.note)}</div>`:""}
+      </div>
+      <button type="button" class="preview-edit" data-index="${i}">Edit</button>
+      <button type="button" class="preview-remove ghost" data-index="${i}" aria-label="Remove ${escapeHtml(ing.name)}">×</button>
+    </div>`).join(""):'<div class="small" style="padding:13px">No ingredients yet. Add your first ingredient below.</div>';
+  document.querySelectorAll(".preview-edit").forEach(btn=>btn.onclick=()=>{
+    readIngredientRows();
+    editingIngredientIndex=Number(btn.dataset.index);
+    activeEditorIngredient={...editorIngredients[editingIngredientIndex]};
+    renderIngredientEditor();
+  });
+  document.querySelectorAll(".preview-remove").forEach(btn=>btn.onclick=()=>{
+    const index=Number(btn.dataset.index);
+    editorIngredients.splice(index,1);
+    if(editingIngredientIndex===index){editingIngredientIndex=-1;activeEditorIngredient=emptyIngredient();renderIngredientEditor();}
+    else if(editingIngredientIndex>index)editingIngredientIndex--;
+    renderIngredientPreview();
   });
 }
+function commitIngredient(){
+  readIngredientRows();
+  const ing=activeEditorIngredient;
+  const name=(ing.name||"").trim();
+  if(!name||!(Number(ing.amount)>0)||!Number.isFinite(Number(ing.amount))){
+    alert("Enter an ingredient name and a positive amount.");return false;
+  }
+  if(densityApplies(ing.unit)&&(!(Number(ing.sg)>0)||Number(ing.sg)>3)){
+    alert("Choose a density preset or enter a valid SG.");return false;
+  }
+  const result={...ing,name,amount:Number(ing.amount)};
+  delete result.densityPreset;
+  if(!densityApplies(result.unit)&&!(Number(result.sg)>0))delete result.sg;
+  if(editingIngredientIndex>=0)editorIngredients[editingIngredientIndex]=result;
+  else editorIngredients.push(result);
+  editingIngredientIndex=-1;
+  activeEditorIngredient=emptyIngredient();
+  renderIngredientPreview();renderIngredientEditor();
+  return true;
+}
 function renderIngredientEditor(){
-  $("ingredientEditorRows").innerHTML=editorIngredients.map((ing,i)=>{
+  $("ingredientEditorRows").innerHTML=[activeEditorIngredient||emptyIngredient()].map((ing,i)=>{
     const units=["oz","ml","g"];
     if(ing.unit&&!units.includes(ing.unit))units.push(ing.unit);
     const hasDensity=densityApplies(ing.unit);
@@ -421,10 +482,13 @@ function renderIngredientEditor(){
       </div>
     </div>`;
   }).join("");
+  $("ingredientEntryTitle").textContent=editingIngredientIndex>=0?"Edit ingredient":"Add ingredient";
+  $("addIngredientBtn").textContent=editingIngredientIndex>=0?"Save ingredient":"+ Add to recipe";
+  $("cancelIngredientEdit").classList.toggle("hidden",editingIngredientIndex<0);
   document.querySelectorAll("#ingredientEditorRows .ingredient-edit-row").forEach(row=>{
     const name=row.querySelector(".ie-name"),unit=row.querySelector(".ie-unit");
     const sg=row.querySelector(".ie-sg"),preset=row.querySelector(".ie-density");
-    row.querySelector(".ie-remove").onclick=()=>{readIngredientRows();editorIngredients.splice(Number(row.dataset.index),1);renderIngredientEditor();};
+
     name.addEventListener("change",()=>{
       if(sg.value.trim())return;
       const known=knownSG(name.value);
@@ -443,18 +507,21 @@ function openEditor(newRecipe=false) {
   const r=newRecipe ? {name:"",ingredients:[],garnish:"",instructions:""} : findRecipe(currentName);
   editOriginalName=newRecipe?null:r.name;
   editorMetadata=newRecipe?{}:{...r};
-  editorIngredients=(r.ingredients||[]).map(i=>({...i,densityPreset:Number(i.sg)>0?"custom":""}));
-  if(!editorIngredients.length)editorIngredients.push({name:"",amount:null,unit:"oz",note:""});
+  editorIngredients=(r.ingredients||[]).map(i=>({...i}));
+  activeEditorIngredient=emptyIngredient();editingIngredientIndex=-1;
   $("editorTitle").textContent=newRecipe?"Add recipe":"Edit recipe";
   $("eName").value=r.name||"";
   $("eGarnish").value=r.garnish||"";
   $("eInstructions").value=r.instructions||"";
-  renderIngredientEditor();
+  renderIngredientPreview();renderIngredientEditor();
   $("deleteBtn").classList.toggle("hidden",newRecipe||!customRecipes().some(x=>x.name===r.name));
   $("editor").showModal();
 }
 function saveRecipe() {
   readIngredientRows();
+  if(activeEditorIngredient && ((activeEditorIngredient.name||"").trim() || activeEditorIngredient.amount!==null)){
+    if(!commitIngredient())return;
+  }
   const name=$("eName").value.trim();
   if(!name){alert("Recipe needs a name.");return;}
   const ingredients=[];
@@ -543,7 +610,8 @@ $("editBtn").onclick = () => openEditor(false);
 $("addBtn").onclick = () => openEditor(true);
 $("cancelBtn").onclick = () => $("editor").close();
 $("saveBtn").onclick = saveRecipe;
-$("addIngredientBtn").onclick=()=>{readIngredientRows();editorIngredients.push({name:"",amount:null,unit:"oz",note:""});renderIngredientEditor();};
+$("addIngredientBtn").onclick=commitIngredient;
+$("cancelIngredientEdit").onclick=()=>{editingIngredientIndex=-1;activeEditorIngredient=emptyIngredient();renderIngredientEditor();};
 $("deleteBtn").onclick = deleteRecipe;
 
 $("sendUpdatesBtn").onclick = sendUpdates;
