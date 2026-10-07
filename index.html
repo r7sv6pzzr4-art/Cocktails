@@ -65,6 +65,13 @@ dialog::backdrop { background:rgba(0,0,0,.65); }
 .tabs button.active { background:var(--accent); color:#18130b; border-color:var(--accent); font-weight:800; }
 .hidden { display:none !important; }
 .warn { border-left:4px solid var(--accent); padding-left:10px; color:var(--muted); }
+.ingredient-edit-row { border:1px solid var(--line); border-radius:14px; padding:11px; margin-top:11px; background:var(--card); }
+.ingredient-edit-row input,.ingredient-edit-row select { width:100%; min-width:0; }
+.ingredient-edit-grid { display:grid; grid-template-columns:minmax(0,1fr) 104px 88px; gap:8px; align-items:end; }
+.ingredient-edit-row label { margin-top:7px; }
+.ingredient-edit-footer { display:flex; gap:8px; align-items:end; }
+.ingredient-edit-footer input { flex:1; }
+@media(max-width:400px) { .ingredient-edit-grid { grid-template-columns:minmax(0,1fr) 82px 72px; gap:5px; } .ingredient-edit-row {padding:8px;} .ingredient-edit-row input,.ingredient-edit-row select {padding:7px;} }
 @media(max-width:560px) {
   .topgrid,.grid2 { grid-template-columns:1fr; }
   .stepper { grid-template-columns:repeat(3,1fr); }
@@ -121,22 +128,14 @@ dialog::backdrop { background:rgba(0,0,0,.65); }
 <dialog id="editor">
   <div class="modal">
     <h2 id="editorTitle">Add recipe</h2>
-    <div class="grid2">
-      <div><label>Name</label><input id="eName"></div>
-      <div><label>Category</label><input id="eCategory"></div>
-    </div>
-    <div class="grid2">
-      <div><label>Glass</label><input id="eGlass"></div>
-      <div><label>Garnish</label><input id="eGarnish"></div>
-    </div>
-    <label>Ingredients, one per line</label>
-    <div class="small">Format: amount | unit | ingredient | SG optional | note optional<br>Example: 1.5 | oz | gin | 0.95</div>
-    <textarea id="eIngredients" style="min-height:190px"></textarea>
-    <label>Instructions</label>
-    <textarea id="eInstructions"></textarea>
-    <label>Original / extra notes</label>
-    <textarea id="eOriginal"></textarea>
-    <div class="row" style="justify-content:flex-end;margin-top:12px">
+    <label for="eName">Name</label><input id="eName" style="width:100%" placeholder="Cocktail name">
+    <h3>Ingredients</h3>
+    <div class="small">Enter an ingredient, its amount and unit, and optional notes.</div>
+    <div id="ingredientEditorRows"></div>
+    <button type="button" id="addIngredientBtn" class="ghost" style="margin-top:10px">+ Add ingredient</button>
+    <label for="eInstructions">Instructions (optional)</label><textarea id="eInstructions" placeholder="Shake with ice, strain…"></textarea>
+    <label for="eGarnish">Garnish (optional)</label><input id="eGarnish" style="width:100%" placeholder="Lemon twist, mint…">
+    <div class="row" style="justify-content:flex-end;margin-top:18px">
       <button id="deleteBtn" class="danger">Delete</button>
       <button id="cancelBtn">Cancel</button>
       <button id="saveBtn" class="primary">Save</button>
@@ -314,53 +313,85 @@ $("adjustOk").onclick=()=>{
   adjustment={recipe:currentName,multiplier:amount/Number(ing.amount)};
   $("ingredientDialog").close();renderRecipe();
 };
-function recipeToLines(r) {
-  return (r.ingredients||[]).map(i => [i.amount, i.unit, i.name, i.sg ?? "", i.note ?? ""].join(" | ").replace(/( \| )+$/,"")).join("\n");
+let editorIngredients = [];
+let editorMetadata = {};
+function guessSG(name) {
+  const target=name.trim().toLowerCase();
+  for(const recipe of allRecipes()) for(const ing of (recipe.ingredients||[])) {
+    if(ing.name.toLowerCase()===target && Number(ing.sg)>0)return Number(ing.sg);
+  }
+  return 1; // Neutral density estimate for new liquids, editable later via recipe data.
+}
+function readIngredientRows() {
+  document.querySelectorAll("#ingredientEditorRows .ingredient-edit-row").forEach((row,i)=>{
+    const ing=editorIngredients[i];
+    if(!ing)return;
+    ing.name=row.querySelector(".ie-name").value;
+    const v=row.querySelector(".ie-amount").value;
+    ing.amount=v===""?null:Number(v);
+    ing.unit=row.querySelector(".ie-unit").value;
+    ing.note=row.querySelector(".ie-note").value;
+  });
+}
+function renderIngredientEditor() {
+  $("ingredientEditorRows").innerHTML=editorIngredients.map((ing,i)=>{
+    const units=["oz","ml","g"];
+    if(ing.unit && !units.includes(ing.unit))units.push(ing.unit);
+    return `<div class="ingredient-edit-row" data-index="${i}">
+      <div class="ingredient-edit-grid">
+        <div><label>Ingredient ${i+1}</label><input class="ie-name" placeholder="e.g. Gin" value="${escapeHtml(ing.name||"")}"></div>
+        <div><label>Amount</label><input class="ie-amount" type="number" inputmode="decimal" min="0" step="any" placeholder="1.5" value="${ing.amount??""}"></div>
+        <div><label>Unit</label><select class="ie-unit">${units.map(u=>`<option value="${u}" ${ing.unit===u?"selected":""}>${u}</option>`).join("")}</select></div>
+      </div>
+      <div class="ingredient-edit-footer">
+        <div style="flex:1;min-width:0"><label>Notes (optional)</label><input class="ie-note" placeholder="Brand, substitution…" value="${escapeHtml(ing.note||"")}"></div>
+        <button type="button" class="ie-remove danger" aria-label="Remove ingredient ${i+1}">×</button>
+      </div>
+    </div>`;
+  }).join("");
+  document.querySelectorAll("#ingredientEditorRows .ingredient-edit-row").forEach(row=>{
+    row.querySelector(".ie-remove").onclick=()=>{
+      readIngredientRows();
+      editorIngredients.splice(Number(row.dataset.index),1);
+      renderIngredientEditor();
+    };
+  });
 }
 function openEditor(newRecipe=false) {
-  const r = newRecipe ? {name:"",category:"",glass:"",garnish:"",ingredients:[],instructions:"",original_notes:""} : findRecipe(currentName);
-  editOriginalName = newRecipe ? null : r.name;
-  $("editorTitle").textContent = newRecipe ? "Add recipe" : "Edit recipe";
-  $("eName").value = r.name || "";
-  $("eCategory").value = r.category || "";
-  $("eGlass").value = r.glass || "";
-  $("eGarnish").value = r.garnish || "";
-  $("eIngredients").value = recipeToLines(r);
-  $("eInstructions").value = r.instructions || "";
-  $("eOriginal").value = r.original_notes || "";
-  $("deleteBtn").classList.toggle("hidden", newRecipe || !customRecipes().some(x=>x.name===r.name));
+  const r=newRecipe ? {name:"",ingredients:[],garnish:"",instructions:""} : findRecipe(currentName);
+  editOriginalName=newRecipe?null:r.name;
+  editorMetadata=newRecipe?{}:{...r};
+  editorIngredients=(r.ingredients||[]).map(i=>({...i}));
+  if(!editorIngredients.length)editorIngredients.push({name:"",amount:null,unit:"oz",note:""});
+  $("editorTitle").textContent=newRecipe?"Add recipe":"Edit recipe";
+  $("eName").value=r.name||"";
+  $("eGarnish").value=r.garnish||"";
+  $("eInstructions").value=r.instructions||"";
+  renderIngredientEditor();
+  $("deleteBtn").classList.toggle("hidden",newRecipe||!customRecipes().some(x=>x.name===r.name));
   $("editor").showModal();
 }
-function parseIngredients(text) {
-  return text.split(/\n+/).map(line => {
-    const p = line.split("|").map(s=>s.trim());
-    if (p.length < 3 || !p[0]) return null;
-    const amount = Number(p[0]);
-    if (!Number.isFinite(amount)) return null;
-    const obj = { amount, unit:p[1], name:p[2] };
-    if (p[3] && Number.isFinite(Number(p[3]))) obj.sg = Number(p[3]);
-    if (p[4]) obj.note = p[4];
-    return obj;
-  }).filter(Boolean);
-}
 function saveRecipe() {
-  const name = $("eName").value.trim();
-  if (!name) { alert("Recipe needs a name."); return; }
-  const r = {
-    name,
-    category:$("eCategory").value.trim(),
-    glass:$("eGlass").value.trim(),
-    garnish:$("eGarnish").value.trim(),
-    ingredients:parseIngredients($("eIngredients").value),
-    instructions:$("eInstructions").value.trim(),
-    original_notes:$("eOriginal").value.trim()
-  };
-  let customs = customRecipes().filter(x => x.name !== editOriginalName && x.name !== name);
+  readIngredientRows();
+  const name=$("eName").value.trim();
+  if(!name){alert("Recipe needs a name.");return;}
+  const ingredients=[];
+  for(const ing of editorIngredients){
+    const ingredientName=(ing.name||"").trim();
+    if(!ingredientName && ing.amount==null)continue;
+    if(!ingredientName || !Number.isFinite(ing.amount) || ing.amount<=0){alert("Each ingredient needs a name and a positive amount.");return;}
+    const result={...ing,name:ingredientName,amount:Number(ing.amount),unit:ing.unit||"oz"};
+    if(result.unit==="g" && !Number(result.sg))delete result.sg;
+    else if(result.unit!=="g" && ["oz","ml","tsp","part"].includes(result.unit) && !Number(result.sg))result.sg=guessSG(result.name);
+    ingredients.push(result);
+  }
+  if(!ingredients.length){alert("Add at least one ingredient.");return;}
+  const r={...editorMetadata,name,ingredients,garnish:$("eGarnish").value.trim(),instructions:$("eInstructions").value.trim()};
+  let customs=customRecipes().filter(x=>x.name!==editOriginalName && x.name!==name);
   customs.push(r);
-  localStorage.customDrinkRecipes = JSON.stringify(customs);
-  currentName = name;
-  $("editor").close();
-  render();
+  localStorage.customDrinkRecipes=JSON.stringify(customs);
+  currentName=name;adjustment=null;
+  $("editor").close();render();
 }
 function deleteRecipe() {
   let customs = customRecipes().filter(x => x.name !== currentName);
@@ -395,6 +426,7 @@ $("editBtn").onclick = () => openEditor(false);
 $("addBtn").onclick = () => openEditor(true);
 $("cancelBtn").onclick = () => $("editor").close();
 $("saveBtn").onclick = saveRecipe;
+$("addIngredientBtn").onclick=()=>{readIngredientRows();editorIngredients.push({name:"",amount:null,unit:"oz",note:""});renderIngredientEditor();};
 $("deleteBtn").onclick = deleteRecipe;
 $("exportBtn").onclick = exportData;
 $("importBtn").onclick = () => { $("backupText").value = ""; $("backupDialog").showModal(); };
