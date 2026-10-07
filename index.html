@@ -110,6 +110,14 @@ dialog::backdrop { background:rgba(0,0,0,.65); }
 
 <button class="fab" id="addBtn">+ Add</button>
 
+<dialog id="ingredientDialog"><div class="modal">
+<h2 id="ingredientTitle">Adjust ingredient</h2>
+<p class="small">Change either volume or weight to scale the whole recipe.</p>
+<label>Volume (fl oz)</label><input id="adjustVolume" type="number" inputmode="decimal" min="0.001" step="any">
+<label>Weight (g)</label><input id="adjustWeight" type="number" inputmode="decimal" min="0.001" step="any">
+<p class="small" id="adjustHint"></p>
+<div class="row" style="justify-content:flex-end"><button id="adjustCancel">Cancel</button><button id="adjustOk" class="primary">OK</button></div>
+</div></dialog>
 <dialog id="editor">
   <div class="modal">
     <h2 id="editorTitle">Add recipe</h2>
