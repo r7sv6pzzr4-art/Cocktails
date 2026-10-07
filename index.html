@@ -251,17 +251,18 @@ function plural(unit, amount) {
 }
 function scaledAmount(ing) { return Number(ing.amount) * (adjustment && adjustment.recipe===currentName ? adjustment.multiplier : scale); }
 function volumeToGrams(ing, amount) {
+  if (ing.unit === "g") return amount;
   if (!ing.sg) return null;
   if (ing.unit === "oz" || ing.unit === "part") return amount * OZ_ML * ing.sg;
   if (ing.unit === "tsp") return amount * TSP_ML * ing.sg;
   if (ing.unit === "ml") return amount * ing.sg;
-  if (ing.unit === "g") return amount;
   return null;
 }
 function amountText(ing) {
   const a = scaledAmount(ing);
   const base = `${fmt(a)} ${plural(ing.unit, a)}`;
   const g = volumeToGrams(ing, a);
+  if (showWeights && ing.unit==="g" && ing.sg) return `${base}<br><span class="small">${fmt(a/ing.sg)} mL</span>`;
   if (showWeights && g !== null) return `${base}<br><span class="small">${fmt(g)} g</span>`;
   return base;
 }
@@ -364,7 +365,9 @@ $("adjustOk").onclick=()=>{
   const ing=findRecipe(currentName).ingredients[activeIngredientIndex];
   const v=$("adjustVolume").value,w=$("adjustWeight").value;
   let amount=null;
-  if(v!==""&&!$("adjustVolume").disabled){
+  if(ing.unit==="g" && w!==""&&!$("adjustWeight").disabled){
+    amount=Number(w);
+  }else if(v!==""&&!$("adjustVolume").disabled){
     const oz=Number(v); amount=ing.unit==="oz"?oz:ing.unit==="ml"?oz*OZ_ML:ing.unit==="tsp"?oz*OZ_ML/TSP_ML:ing.unit==="g"&&ing.sg?oz*OZ_ML*ing.sg:null;
   }else if(w!==""&&!$("adjustWeight").disabled){
     const g=Number(w); amount=ing.unit==="g"?g:ing.unit==="oz"&&ing.sg?g/ing.sg/OZ_ML:ing.unit==="ml"&&ing.sg?g/ing.sg:ing.unit==="tsp"&&ing.sg?g/ing.sg/TSP_ML:null;
@@ -399,7 +402,7 @@ function knownSG(name){
   }
   return null;
 }
-function densityApplies(unit){return ["oz","ml","tsp","part"].includes(unit);}
+function densityApplies(unit){return ["oz","ml","tsp","part","g"].includes(unit);}
 function readIngredientRows(){
   const row=document.querySelector("#ingredientEditorRows .ingredient-edit-row");
   if(!row||!activeEditorIngredient)return;
@@ -441,8 +444,9 @@ function commitIngredient(){
   readIngredientRows();
   const ing=activeEditorIngredient;
   const name=(ing.name||"").trim();
-  if(!name||!(Number(ing.amount)>0)||!Number.isFinite(Number(ing.amount))){
-    alert("Enter an ingredient name and a positive amount.");return false;
+  if(!name){alert("Type an ingredient name in the Ingredient field (the example text is only a placeholder).");document.querySelector("#ingredientEditorRows .ie-name").focus();return false;}
+  if(ing.amount===null||!(Number(ing.amount)>0)||!Number.isFinite(Number(ing.amount))){
+    alert("Type a positive number in Amount (the example text is only a placeholder).");document.querySelector("#ingredientEditorRows .ie-amount").focus();return false;
   }
   if(densityApplies(ing.unit)&&(!(Number(ing.sg)>0)||Number(ing.sg)>3)){
     alert("Choose a density preset or enter a valid SG.");return false;
@@ -465,8 +469,8 @@ function renderIngredientEditor(){
     const preset=ing.densityPreset|| (Number(ing.sg)>0?"custom":"");
     return `<div class="ingredient-edit-row" data-index="${i}">
       <div class="ingredient-edit-grid">
-        <div><label>Ingredient ${i+1}</label><input class="ie-name" placeholder="e.g. Gin" value="${escapeHtml(ing.name||"")}"></div>
-        <div><label>Amount</label><input class="ie-amount" type="number" inputmode="decimal" min="0" step="any" placeholder="1.5" value="${ing.amount??""}"></div>
+        <div><label>Ingredient ${i+1}</label><input class="ie-name" placeholder="Enter ingredient" value="${escapeHtml(ing.name||"")}"></div>
+        <div><label>Amount</label><input class="ie-amount" type="number" inputmode="decimal" min="0" step="any" placeholder="Amount" value="${ing.amount??""}"></div>
         <div><label>Unit</label><select class="ie-unit">${units.map(u=>`<option value="${escapeHtml(u)}" ${ing.unit===u?"selected":""}>${escapeHtml(u)}</option>`).join("")}</select></div>
       </div>
       <div class="density-section" ${hasDensity?"":"hidden"}>
@@ -474,7 +478,7 @@ function renderIngredientEditor(){
           <div><label>Density preset</label><select class="ie-density">${DENSITY_PRESETS.map(([key,title])=>`<option value="${key}" ${preset===key?"selected":""}>${escapeHtml(title)}</option>`).join("")}</select></div>
           <div><label>SG (g/mL)</label><input class="ie-sg" type="number" inputmode="decimal" min="0.01" max="3" step="0.001" placeholder="Required" value="${ing.sg??""}"></div>
         </div>
-        <div class="density-hint">Approximate density for converting volume to grams. Edit SG if known.</div>
+        <div class="density-hint">Required for converting between weight and volume. Edit SG if known.</div>
       </div>
       <div class="ingredient-edit-footer">
         <div style="flex:1;min-width:0"><label>Notes (optional)</label><input class="ie-note" placeholder="Brand, substitution…" value="${escapeHtml(ing.note||"")}"></div>
