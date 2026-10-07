@@ -84,6 +84,12 @@ dialog::backdrop { background:rgba(0,0,0,.65); }
 .ingredient-entry h3 { margin:0; }
 .ingredient-entry .ingredient-edit-row { padding:0; border:0; margin:10px 0 0; background:transparent; }
 .ingredient-entry .ie-remove { display:none; }
+.ingredient-name-wrap { position:relative; }
+.ingredient-suggestions { position:absolute; z-index:30; top:100%; left:0; right:0; max-height:205px; overflow-y:auto; background:var(--card); border:1px solid var(--line); border-radius:10px; box-shadow:0 8px 22px #0006; }
+.ingredient-suggestions[hidden] { display:none; }
+.ingredient-suggestions button { display:block; width:100%; text-align:left; border:0; border-bottom:1px solid var(--line); border-radius:0; background:transparent; padding:11px; color:inherit; font-size:14px; }
+.ingredient-suggestions button:last-child { border-bottom:0; }
+.ingredient-suggestions button:focus,.ingredient-suggestions button:hover { background:var(--card2); }
 .density-hint { margin-top:5px; font-size:11px; color:var(--muted); }
 .ingredient-edit-footer input { flex:1; }
 @media(max-width:400px) { .ingredient-edit-grid { grid-template-columns:minmax(0,1fr) 82px 72px; gap:5px; } .ingredient-edit-row {padding:8px;} .ingredient-edit-row input,.ingredient-edit-row select {padding:7px;} }
@@ -409,6 +415,16 @@ function knownSG(name){
   }
   return null;
 }
+function knownIngredients(){
+  const byName=new Map();
+  for(const recipe of allRecipes())for(const ing of (recipe.ingredients||[])){
+    const key=ing.name.trim().toLowerCase();
+    if(!key)continue;
+    const existing=byName.get(key);
+    if(!existing || (!(Number(existing.sg)>0) && Number(ing.sg)>0))byName.set(key,{name:ing.name,sg:Number(ing.sg)>0?Number(ing.sg):null});
+  }
+  return [...byName.values()].sort((a,b)=>a.name.localeCompare(b.name));
+}
 function densityApplies(unit){return ["oz","ml","tsp","part","g"].includes(unit);}
 function readIngredientRows(){
   const row=document.querySelector("#ingredientEditorRows .ingredient-edit-row");
@@ -476,7 +492,7 @@ function renderIngredientEditor(){
     const preset=ing.densityPreset|| (Number(ing.sg)>0?"custom":"");
     return `<div class="ingredient-edit-row" data-index="${i}">
       <div class="ingredient-edit-grid">
-        <div><label>Ingredient ${i+1}</label><input class="ie-name" placeholder="Enter ingredient" value="${escapeHtml(ing.name||"")}"></div>
+        <div class="ingredient-name-wrap"><label>Ingredient</label><input class="ie-name" autocomplete="off" placeholder="Search or enter ingredient" value="${escapeHtml(ing.name||"")}"><div class="ingredient-suggestions" hidden></div></div>
         <div><label>Amount</label><input class="ie-amount" type="number" inputmode="decimal" min="0" step="any" placeholder="Amount" value="${ing.amount??""}"></div>
         <div><label>Unit</label><select class="ie-unit">${units.map(u=>`<option value="${escapeHtml(u)}" ${ing.unit===u?"selected":""}>${escapeHtml(u)}</option>`).join("")}</select></div>
       </div>
@@ -500,11 +516,36 @@ function renderIngredientEditor(){
     const name=row.querySelector(".ie-name"),unit=row.querySelector(".ie-unit");
     const sg=row.querySelector(".ie-sg"),preset=row.querySelector(".ie-density");
 
-    name.addEventListener("change",()=>{
-      if(sg.value.trim())return;
-      const known=knownSG(name.value);
-      if(known!==null){sg.value=known;preset.value="custom";}
-    });
+    const suggestions=row.querySelector(".ingredient-suggestions");
+    const library=knownIngredients();
+    let chosenName=null;
+    const applyKnown=()=>{
+      const match=library.find(item=>item.name.toLowerCase()===name.value.trim().toLowerCase());
+      if(match && match.sg!==null && (sg.value.trim()==="" || chosenName!==null)){
+        sg.value=match.sg;preset.value="custom";
+      }
+      chosenName=null;
+    };
+    const closeSuggestions=()=>{suggestions.hidden=true;suggestions.innerHTML="";};
+    const showSuggestions=()=>{
+      const q=name.value.trim().toLowerCase();
+      if(!q){closeSuggestions();return;}
+      const matches=library.filter(item=>item.name.toLowerCase().includes(q)).slice(0,8);
+      if(!matches.length){closeSuggestions();return;}
+      suggestions.innerHTML=matches.map(item=>`<button type="button" data-name="${escapeHtml(item.name)}">${escapeHtml(item.name)}${item.sg!==null?` <span class="small">· SG ${item.sg}</span>`:""}</button>`).join("");
+      suggestions.hidden=false;
+      suggestions.querySelectorAll("button").forEach(btn=>{
+        btn.addEventListener("pointerdown",e=>e.preventDefault());
+        btn.addEventListener("click",()=>{
+          name.value=btn.dataset.name;
+          chosenName=btn.dataset.name;
+          applyKnown();closeSuggestions();name.focus();
+        });
+      });
+    };
+    name.addEventListener("input",()=>{chosenName=null;showSuggestions();});
+    name.addEventListener("focus",showSuggestions);
+    name.addEventListener("blur",()=>{applyKnown();setTimeout(closeSuggestions,120);});
     preset.addEventListener("change",()=>{
       const choice=DENSITY_PRESETS.find(p=>p[0]===preset.value);
       sg.value=choice&&choice[2]!==null?choice[2]:"";
