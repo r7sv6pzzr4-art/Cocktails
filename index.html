@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Drinks">
+<meta name="apple-mobile-web-app-title" content="Cocktail Calculator">
 <meta name="theme-color" content="#151515">
-<title>Drinks</title>
+<title>Cocktail Calculator</title>
 <style>
 :root {
   --bg:#101114; --card:#1a1c20; --card2:#202329; --text:#f5f1e8; --muted:#b8ad9d;
@@ -76,11 +76,57 @@ dialog::backdrop { background:rgba(0,0,0,.65); }
   .topgrid,.grid2 { grid-template-columns:1fr; }
   .stepper { grid-template-columns:repeat(3,1fr); }
 }
+
+/* Refined, compact cocktail-workbench styling */
+:root {
+  --bg:#101317; --card:#1b2026; --card2:#252c34;
+  --text:#f5f2eb; --muted:#aeb5bc; --line:#343c45;
+  --accent:#e7b36d;
+}
+body { background:radial-gradient(ellipse 110% 320px at 50% -90px,#28343d 0%,transparent 75%),var(--bg); line-height:1.45; }
+header { padding:18px max(16px,env(safe-area-inset-left)) 15px; background:rgba(16,19,23,.96); border-bottom:1px solid #39424b; }
+header h1 { max-width:780px; margin:0 auto 15px; font-size:clamp(22px,4.5vw,29px); font-weight:750; letter-spacing:-.045em; line-height:1.12; }
+header .topgrid,header .search { max-width:780px; margin-left:auto; margin-right:auto; }
+header .search { display:block; margin-top:9px; }
+main { padding:16px 14px calc(105px + env(safe-area-inset-bottom)); }
+.card { border-radius:16px; padding:19px; margin:0 0 14px; box-shadow:0 6px 22px rgba(0,0,0,.12); }
+select,input,button,textarea { border-radius:10px; transition:border-color .16s,background .16s; }
+select:focus-visible,input:focus-visible,textarea:focus-visible,button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+button:active { transform:translateY(1px); }
+button.primary { background:#e7b36d; border-color:#e7b36d; }
+h2 { font-size:clamp(24px,5vw,30px); letter-spacing:-.035em; font-weight:750; line-height:1.18; }
+h3 { margin:20px 0 8px; font-size:11px; font-weight:800; letter-spacing:.12em; }
+.pill { font-size:12px; background:#252c34; border-color:#39424b; padding:5px 10px; }
+.stepper { margin-top:14px; }
+.stepper button { font-weight:700; }
+.stepper button.active { box-shadow:0 2px 12px rgba(231,179,109,.16); }
+.scale-card .between label { color:var(--text); font-size:14px; }
+.weight-help { margin-top:12px; font-size:12px; }
+#recipeCard table { margin-top:4px; }
+#recipeCard td { padding:13px 5px; }
+#recipeCard tbody tr:last-child td { border-bottom:0; }
+#recipeCard .ingredient-row:active { background:rgba(231,179,109,.08); }
+#recipeCard .qty { font-weight:700; color:#f3d1a2; }
+.ingredient-help { color:var(--muted); font-size:12px; padding:0 5px; margin:-3px 0 17px; }
+.ingredient-help button { min-height:32px; padding:5px 9px; margin-left:5px; }
+.notes-card h3 { margin-top:0; }
+.notes-card textarea { margin-top:6px; min-height:95px; }
+.share-actions { display:flex; justify-content:flex-start; padding:2px 0 15px; }
+.share-actions button { font-size:14px; padding:11px 17px; }
+.fab { bottom:calc(17px + env(safe-area-inset-bottom)); right:18px; padding:13px 20px; font-size:15px; letter-spacing:.01em; box-shadow:0 6px 25px rgba(0,0,0,.45); }
+.modal { padding:22px; }
+dialog { box-shadow:0 24px 80px rgba(0,0,0,.5); }
+@media(max-width:560px) {
+  header { padding-top:14px; }
+  .topgrid { grid-template-columns:minmax(0,1fr) auto; }
+  .card { padding:15px; }
+  .stepper { gap:6px; }
+}
 </style>
 </head>
 <body>
 <header>
-  <h1>Drinks</h1>
+  <h1>Cocktail Calculator</h1>
   <div class="topgrid">
     <select id="recipeSelect" aria-label="Recipe"></select>
     <button id="editBtn">Edit</button>
@@ -89,30 +135,25 @@ dialog::backdrop { background:rgba(0,0,0,.65); }
 </header>
 
 <main>
-  <section class="card">
+  <section class="card scale-card">
     <div class="between">
       <span class="pill" id="batchLabel">1 drink</span>
       <label style="margin:0;display:flex;gap:8px;align-items:center"><input id="weightToggle" type="checkbox" style="min-height:0"> weights</label>
     </div>
     <div class="stepper" id="scaleBtns"></div>
-    <div class="small" style="margin-top:8px">Weights are estimates using specific gravity values stored per ingredient. You can edit those values.</div>
+    <div class="small weight-help">Weights are estimates based on ingredient density.</div>
   </section>
 
   <section class="card" id="recipeCard"></section>
-  <div class="small" style="padding:0 8px">Touch and hold (or tap) an ingredient to adjust the entire recipe proportionally. <button id="adjustReset" hidden>Reset adjustment</button></div>
+  <div class="ingredient-help">Tap an ingredient to adjust the recipe proportionally. <button id="adjustReset" hidden>Reset</button></div>
 
-  <section class="card">
+  <section class="card notes-card">
     <h3>My notes</h3>
     <textarea id="personalNotes" placeholder="Your tweaks, preferred brands, serving notes..."></textarea>
   </section>
 
-  <section class="card small">
-    <b>Install on iPhone:</b> open this file in Safari → Share → Add to Home Screen. Added recipes and notes save locally on that iPhone/browser.
-    <div class="row" style="margin-top:10px">
-      <button id="sendUpdatesBtn" class="primary">Send updates</button>
-      <button id="exportBtn" class="ghost">Export backup</button>
-      <button id="importBtn" class="ghost">Import backup</button>
-    </div>
+  <section class="share-actions">
+    <button id="sendUpdatesBtn" class="primary">↗ Send updates</button>
   </section>
 </main>
 
@@ -245,11 +286,11 @@ function renderRecipe() {
     </div>
     <h3>Ingredients</h3>
     <table><thead><tr><th>Ingredient</th><th class="qty">Amount</th></tr></thead><tbody>${rows}</tbody></table>
-    <h3>Instructions</h3>
-    <div class="note">${escapeHtml(r.instructions || "No instructions yet.")}</div>
+    ${r.instructions ? `<h3>Instructions</h3><div class="note">${escapeHtml(r.instructions)}</div>` : ""}
     ${r.original_notes ? `<details><summary>Original / ambiguous notes</summary><div class="note small" style="margin-top:8px">${escapeHtml(r.original_notes)}</div></details>` : ""}
   `;
   attachIngredientHandlers();
+  $("adjustReset").hidden=!(adjustment&&adjustment.recipe===currentName);
 }
 function render() {
   $("weightToggle").checked = showWeights;
@@ -461,9 +502,9 @@ $("cancelBtn").onclick = () => $("editor").close();
 $("saveBtn").onclick = saveRecipe;
 $("addIngredientBtn").onclick=()=>{readIngredientRows();editorIngredients.push({name:"",amount:null,unit:"oz",note:""});renderIngredientEditor();};
 $("deleteBtn").onclick = deleteRecipe;
-$("exportBtn").onclick = exportData;
+
 $("sendUpdatesBtn").onclick = sendUpdates;
-$("importBtn").onclick = () => { $("backupText").value = ""; $("backupDialog").showModal(); };
+
 $("copyBackup").onclick = async () => { await navigator.clipboard.writeText($("backupText").value); $("copyBackup").textContent="Copied"; setTimeout(()=>$("copyBackup").textContent="Copy export",1200); };
 $("loadBackup").onclick = importData;
 
