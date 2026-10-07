@@ -70,6 +70,9 @@ dialog::backdrop { background:rgba(0,0,0,.65); }
 .ingredient-edit-grid { display:grid; grid-template-columns:minmax(0,1fr) 104px 88px; gap:8px; align-items:end; }
 .ingredient-edit-row label { margin-top:7px; }
 .ingredient-edit-footer { display:flex; gap:8px; align-items:end; }
+.density-controls { display:grid; grid-template-columns:minmax(0,1fr) 110px; gap:9px; margin-top:6px; }
+.density-controls select,.density-controls input { width:100%; min-width:0; }
+.density-hint { margin-top:5px; font-size:11px; color:var(--muted); }
 .ingredient-edit-footer input { flex:1; }
 @media(max-width:400px) { .ingredient-edit-grid { grid-template-columns:minmax(0,1fr) 82px 72px; gap:5px; } .ingredient-edit-row {padding:8px;} .ingredient-edit-row input,.ingredient-edit-row select {padding:7px;} }
 @media(max-width:560px) {
@@ -357,33 +360,60 @@ $("adjustOk").onclick=()=>{
 };
 let editorIngredients = [];
 let editorMetadata = {};
-function guessSG(name) {
+const DENSITY_PRESETS=[
+  ["","Choose density…",null],
+  ["spirit","Spirit (~40% ABV)",0.95],
+  ["strong","High-proof spirit",0.92],
+  ["wine","Wine / vermouth",1.00],
+  ["citrus","Citrus juice",1.03],
+  ["juice","Fruit juice",1.05],
+  ["liqueur","Liqueur (varies)",1.08],
+  ["water","Water / soda",1.00],
+  ["simple","Simple syrup (1:1 by weight)",1.23],
+  ["rich","Rich syrup (2:1 by weight)",1.32],
+  ["custom","Custom SG",null]
+];
+function knownSG(name){
   const target=name.trim().toLowerCase();
-  for(const recipe of allRecipes()) for(const ing of (recipe.ingredients||[])) {
+  if(!target)return null;
+  for(const recipe of allRecipes())for(const ing of (recipe.ingredients||[])){
     if(ing.name.toLowerCase()===target && Number(ing.sg)>0)return Number(ing.sg);
   }
-  return 1; // Neutral density estimate for new liquids, editable later via recipe data.
+  return null;
 }
-function readIngredientRows() {
+function densityApplies(unit){return ["oz","ml","tsp","part"].includes(unit);}
+function readIngredientRows(){
   document.querySelectorAll("#ingredientEditorRows .ingredient-edit-row").forEach((row,i)=>{
-    const ing=editorIngredients[i];
-    if(!ing)return;
+    const ing=editorIngredients[i];if(!ing)return;
     ing.name=row.querySelector(".ie-name").value;
     const v=row.querySelector(".ie-amount").value;
     ing.amount=v===""?null:Number(v);
     ing.unit=row.querySelector(".ie-unit").value;
     ing.note=row.querySelector(".ie-note").value;
+    const sgField=row.querySelector(".ie-sg");
+    const sgText=sgField.value.trim();
+    ing.sg=sgText===""?null:Number(sgText);
+    ing.densityPreset=row.querySelector(".ie-density").value;
   });
 }
-function renderIngredientEditor() {
+function renderIngredientEditor(){
   $("ingredientEditorRows").innerHTML=editorIngredients.map((ing,i)=>{
     const units=["oz","ml","g"];
-    if(ing.unit && !units.includes(ing.unit))units.push(ing.unit);
+    if(ing.unit&&!units.includes(ing.unit))units.push(ing.unit);
+    const hasDensity=densityApplies(ing.unit);
+    const preset=ing.densityPreset|| (Number(ing.sg)>0?"custom":"");
     return `<div class="ingredient-edit-row" data-index="${i}">
       <div class="ingredient-edit-grid">
         <div><label>Ingredient ${i+1}</label><input class="ie-name" placeholder="e.g. Gin" value="${escapeHtml(ing.name||"")}"></div>
         <div><label>Amount</label><input class="ie-amount" type="number" inputmode="decimal" min="0" step="any" placeholder="1.5" value="${ing.amount??""}"></div>
-        <div><label>Unit</label><select class="ie-unit">${units.map(u=>`<option value="${u}" ${ing.unit===u?"selected":""}>${u}</option>`).join("")}</select></div>
+        <div><label>Unit</label><select class="ie-unit">${units.map(u=>`<option value="${escapeHtml(u)}" ${ing.unit===u?"selected":""}>${escapeHtml(u)}</option>`).join("")}</select></div>
+      </div>
+      <div class="density-section" ${hasDensity?"":"hidden"}>
+        <div class="density-controls">
+          <div><label>Density preset</label><select class="ie-density">${DENSITY_PRESETS.map(([key,title])=>`<option value="${key}" ${preset===key?"selected":""}>${escapeHtml(title)}</option>`).join("")}</select></div>
+          <div><label>SG (g/mL)</label><input class="ie-sg" type="number" inputmode="decimal" min="0.01" max="3" step="0.001" placeholder="Required" value="${ing.sg??""}"></div>
+        </div>
+        <div class="density-hint">Approximate density for converting volume to grams. Edit SG if known.</div>
       </div>
       <div class="ingredient-edit-footer">
         <div style="flex:1;min-width:0"><label>Notes (optional)</label><input class="ie-note" placeholder="Brand, substitution…" value="${escapeHtml(ing.note||"")}"></div>
@@ -392,18 +422,28 @@ function renderIngredientEditor() {
     </div>`;
   }).join("");
   document.querySelectorAll("#ingredientEditorRows .ingredient-edit-row").forEach(row=>{
-    row.querySelector(".ie-remove").onclick=()=>{
-      readIngredientRows();
-      editorIngredients.splice(Number(row.dataset.index),1);
-      renderIngredientEditor();
-    };
+    const name=row.querySelector(".ie-name"),unit=row.querySelector(".ie-unit");
+    const sg=row.querySelector(".ie-sg"),preset=row.querySelector(".ie-density");
+    row.querySelector(".ie-remove").onclick=()=>{readIngredientRows();editorIngredients.splice(Number(row.dataset.index),1);renderIngredientEditor();};
+    name.addEventListener("change",()=>{
+      if(sg.value.trim())return;
+      const known=knownSG(name.value);
+      if(known!==null){sg.value=known;preset.value="custom";}
+    });
+    preset.addEventListener("change",()=>{
+      const choice=DENSITY_PRESETS.find(p=>p[0]===preset.value);
+      sg.value=choice&&choice[2]!==null?choice[2]:"";
+      if(preset.value==="custom")sg.focus();
+    });
+    sg.addEventListener("input",()=>{preset.value="custom";});
+    unit.addEventListener("change",()=>{row.querySelector(".density-section").hidden=!densityApplies(unit.value);});
   });
 }
 function openEditor(newRecipe=false) {
   const r=newRecipe ? {name:"",ingredients:[],garnish:"",instructions:""} : findRecipe(currentName);
   editOriginalName=newRecipe?null:r.name;
   editorMetadata=newRecipe?{}:{...r};
-  editorIngredients=(r.ingredients||[]).map(i=>({...i}));
+  editorIngredients=(r.ingredients||[]).map(i=>({...i,densityPreset:Number(i.sg)>0?"custom":""}));
   if(!editorIngredients.length)editorIngredients.push({name:"",amount:null,unit:"oz",note:""});
   $("editorTitle").textContent=newRecipe?"Add recipe":"Edit recipe";
   $("eName").value=r.name||"";
@@ -423,8 +463,11 @@ function saveRecipe() {
     if(!ingredientName && ing.amount==null)continue;
     if(!ingredientName || !Number.isFinite(ing.amount) || ing.amount<=0){alert("Each ingredient needs a name and a positive amount.");return;}
     const result={...ing,name:ingredientName,amount:Number(ing.amount),unit:ing.unit||"oz"};
-    if(result.unit==="g" && !Number(result.sg))delete result.sg;
-    else if(result.unit!=="g" && ["oz","ml","tsp","part"].includes(result.unit) && !Number(result.sg))result.sg=guessSG(result.name);
+    delete result.densityPreset;
+    if(densityApplies(result.unit)){
+      if(!(Number(result.sg)>0) || Number(result.sg)>3){alert("Choose a density preset or enter a valid SG for "+ingredientName+".");return;}
+      result.sg=Number(result.sg);
+    }else if(!(Number(result.sg)>0))delete result.sg;
     ingredients.push(result);
   }
   if(!ingredients.length){alert("Add at least one ingredient.");return;}
