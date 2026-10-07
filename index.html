@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Drinks">
+<meta name="theme-color" content="#151515">
+<title>Drinks</title>
+<style>
+:root {
+  --bg:#101114; --card:#1a1c20; --card2:#202329; --text:#f5f1e8; --muted:#b8ad9d;
+  --line:#3a3a3f; --accent:#f6b35b; --danger:#ef7373; --ok:#8bd39a;
+}
+* { box-sizing:border-box; }
+body {
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+}
+header {
+  position:sticky; top:0; z-index:10; padding:14px 14px 10px;
+  background:rgba(16,17,20,.94); backdrop-filter:blur(14px); border-bottom:1px solid var(--line);
+}
+h1 { font-size:24px; margin:0 0 10px; letter-spacing:.2px; }
+select,input,button,textarea {
+  font:inherit; color:var(--text); background:var(--card2); border:1px solid var(--line);
+  border-radius:12px; padding:11px; min-height:44px;
+}
+button { cursor:pointer; }
+button.primary { background:var(--accent); color:#18130b; border-color:var(--accent); font-weight:800; }
+button.ghost { background:transparent; }
+button.danger { color:#fff; border-color:#7f3434; background:#5a2222; }
+.topgrid { display:grid; grid-template-columns: 1fr auto; gap:8px; }
+.search { margin-top:8px; width:100%; }
+main { padding:12px 12px 90px; max-width:780px; margin:0 auto; }
+.card {
+  background:var(--card); border:1px solid var(--line); border-radius:18px; padding:14px; margin:12px 0;
+  box-shadow:0 12px 28px rgba(0,0,0,.22);
+}
+.row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.between { display:flex; justify-content:space-between; gap:8px; align-items:center; }
+.pill { border:1px solid var(--line); color:var(--muted); padding:6px 10px; border-radius:999px; font-size:13px; }
+.stepper { display:grid; grid-template-columns:repeat(6,1fr); gap:7px; margin-top:10px; }
+.stepper button.active { background:var(--accent); color:#18130b; border-color:var(--accent); font-weight:900; }
+h2 { margin:0 0 6px; font-size:25px; }
+h3 { margin:15px 0 7px; font-size:15px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
+table { width:100%; border-collapse:collapse; }
+td,th { border-bottom:1px solid var(--line); padding:10px 4px; vertical-align:top; }
+th { text-align:left; color:var(--muted); font-size:13px; font-weight:600; }
+.qty { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.small { color:var(--muted); font-size:13px; line-height:1.35; }
+.note { white-space:pre-wrap; line-height:1.42; }
+textarea { width:100%; min-height:115px; resize:vertical; }
+.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+label { display:block; margin:10px 0 5px; color:var(--muted); font-size:13px; }
+details summary { color:var(--muted); cursor:pointer; margin-top:10px; }
+.fab {
+  position:fixed; right:16px; bottom:16px; padding:14px 16px; border-radius:999px;
+  background:var(--accent); color:#18130b; border:0; font-weight:900; box-shadow:0 10px 28px rgba(0,0,0,.4);
+}
+dialog { width:min(760px,calc(100% - 22px)); max-height:88vh; overflow:auto; background:#111318; color:var(--text); border:1px solid var(--line); border-radius:18px; padding:0; }
+dialog::backdrop { background:rgba(0,0,0,.65); }
+.modal { padding:15px; }
+.tabs { display:flex; gap:7px; margin-top:10px; }
+.tabs button.active { background:var(--accent); color:#18130b; border-color:var(--accent); font-weight:800; }
+.hidden { display:none !important; }
+.warn { border-left:4px solid var(--accent); padding-left:10px; color:var(--muted); }
+@media(max-width:560px) {
+  .topgrid,.grid2 { grid-template-columns:1fr; }
+  .stepper { grid-template-columns:repeat(3,1fr); }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Drinks</h1>
+  <div class="topgrid">
+    <select id="recipeSelect" aria-label="Recipe"></select>
+    <button id="editBtn">Edit</button>
+  </div>
+  <input id="search" class="search" placeholder="Search recipes or ingredients">
+</header>
+
+<main>
+  <section class="card">
+    <div class="between">
+      <span class="pill" id="batchLabel">1 drink</span>
+      <label style="margin:0;display:flex;gap:8px;align-items:center"><input id="weightToggle" type="checkbox" style="min-height:0"> weights</label>
+    </div>
+    <div class="stepper" id="scaleBtns"></div>
+    <div class="small" style="margin-top:8px">Weights are estimates using specific gravity values stored per ingredient. You can edit those values.</div>
+  </section>
+
+  <section class="card" id="recipeCard"></section>
+
+  <section class="card">
+    <h3>My notes</h3>
+    <textarea id="personalNotes" placeholder="Your tweaks, preferred brands, serving notes..."></textarea>
+  </section>
+
+  <section class="card small">
+    <b>Install on iPhone:</b> open this file in Safari → Share → Add to Home Screen. Added recipes and notes save locally on that iPhone/browser.
+    <div class="row" style="margin-top:10px">
+      <button id="exportBtn" class="ghost">Export backup</button>
+      <button id="importBtn" class="ghost">Import backup</button>
+    </div>
+  </section>
+</main>
+
+<button class="fab" id="addBtn">+ Add</button>
+
+<dialog id="editor">
+  <div class="modal">
+    <h2 id="editorTitle">Add recipe</h2>
+    <div class="grid2">
+      <div><label>Name</label><input id="eName"></div>
+      <div><label>Category</label><input id="eCategory"></div>
+    </div>
+    <div class="grid2">
+      <div><label>Glass</label><input id="eGlass"></div>
+      <div><label>Garnish</label><input id="eGarnish"></div>
+    </div>
+    <label>Ingredients, one per line</label>
+    <div class="small">Format: amount | unit | ingredient | SG optional | note optional<br>Example: 1.5 | oz | gin | 0.95</div>
+    <textarea id="eIngredients" style="min-height:190px"></textarea>
+    <label>Instructions</label>
+    <textarea id="eInstructions"></textarea>
+    <label>Original / extra notes</label>
+    <textarea id="eOriginal"></textarea>
+    <div class="row" style="justify-content:flex-end;margin-top:12px">
+      <button id="deleteBtn" class="danger">Delete</button>
+      <button id="cancelBtn">Cancel</button>
+      <button id="saveBtn" class="primary">Save</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="backupDialog">
+  <div class="modal">
+    <h2>Backup</h2>
+    <div class="tabs">
+      <button id="copyBackup" class="primary">Copy export</button>
+      <button id="loadBackup">Import pasted backup</button>
+    </div>
+    <textarea id="backupText" style="min-height:260px"></textarea>
+    <div class="row" style="justify-content:flex-end;margin-top:12px">
+      <button onclick="document.getElementById('backupDialog').close()">Close</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+const BUILT_INS = [{"name": "Mojito", "category": "Rum / tall", "glass": "Highball", "garnish": "Mint", "ingredients": [{"name": "Rum", "amount": 1.5, "unit": "oz", "sg": 0.95}, {"name": "Lime juice", "amount": 0.625, "unit": "oz", "sg": 1.03, "note": "Original note: 1/2 to 3/4 oz, about half a lime"}, {"name": "Simple syrup 1:1", "amount": 0.5, "unit": "oz", "sg": 1.18}, {"name": "Mint", "amount": 3, "unit": "sprig"}, {"name": "Club soda", "amount": 3, "unit": "oz", "sg": 1.0}], "instructions": "Gently muddle or slap mint. Add rum, lime, and simple syrup with ice. Top with club soda.", "original_notes": "4x mix: 3/4 cup rum, 1/4 cup lime, 1/4 cup simple syrup. Or plus 1 can seltzer. Note had stray text after simple syrup."}, {"name": "Stinger", "category": "Brandy", "ingredients": [{"name": "Brandy", "amount": 2, "unit": "oz", "sg": 0.95}, {"name": "Crème de menthe", "amount": 0.6, "unit": "oz", "sg": 1.05, "note": "Generous 0.5 oz"}], "instructions": "Shake with ice, then add to 2–3 ice cubes.", "original_notes": ""}, {"name": "Jungle Bird", "category": "Rum / tropical", "ingredients": [{"name": "Blackstrap rum", "amount": 1.5, "unit": "oz", "sg": 1.0}, {"name": "Campari", "amount": 0.75, "unit": "oz", "sg": 1.02}, {"name": "Lime juice", "amount": 0.5, "unit": "oz", "sg": 1.03}, {"name": "Simple syrup 1:1", "amount": 0.5, "unit": "oz", "sg": 1.18}, {"name": "Pineapple juice", "amount": 1.5, "unit": "oz", "sg": 1.05}], "instructions": "Shake with ice and strain.", "original_notes": ""}, {"name": "Negroni", "category": "Gin / stirred", "ingredients": [{"name": "Gin", "amount": 1, "unit": "part", "sg": 0.95}, {"name": "Campari", "amount": 1, "unit": "part", "sg": 1.02}, {"name": "Sweet vermouth", "amount": 1, "unit": "part", "sg": 1.02}], "instructions": "Stir equal parts with ice. Serve on rocks with orange peel.", "original_notes": "Equal parts gin/Campari/sweet vermouth."}, {"name": "Nouveau Carré", "category": "Tequila / stirred", "ingredients": [{"name": "Añejo tequila", "amount": 1.5, "unit": "oz", "sg": 0.95}, {"name": "Bénédictine", "amount": 0.75, "unit": "oz", "sg": 1.04}, {"name": "Lillet Blanc", "amount": 0.25, "unit": "oz", "sg": 0.98}, {"name": "Peychaud’s bitters", "amount": 2, "unit": "dash"}], "instructions": "Stir with ice. Garnish with a lemon peel twist.", "original_notes": "Parentheses in original looked like 4x ounce totals: tequila (6), Benedictine (3), Lillet (1)."}, {"name": "Margarita", "category": "Tequila / sour", "ingredients": [{"name": "Tequila", "amount": 1.5, "unit": "oz", "sg": 0.95}, {"name": "Orange liqueur", "amount": 1, "unit": "oz", "sg": 1.04}, {"name": "Lime juice", "amount": 1, "unit": "oz", "sg": 1.03}, {"name": "Simple syrup 1:1", "amount": 0.15, "unit": "oz", "sg": 1.18, "optional": true, "note": "A few teaspoons if necessary; or a bit of water"}], "instructions": "Shake with ice and strain. Adjust sweetness or dilution to taste.", "original_notes": "4x note: 3/4 cup tequila, 1/2 cup lime & triple sec. Weight note: 120g / 120g / 180g tequila, likely for batch."}, {"name": "Martinez", "category": "Gin / stirred", "ingredients": [{"name": "Old Tom gin", "amount": 1.5, "unit": "oz", "sg": 0.96}, {"name": "Sweet vermouth", "amount": 1.5, "unit": "oz", "sg": 1.02}, {"name": "Maraschino liqueur", "amount": 1, "unit": "tsp", "sg": 1.03}, {"name": "Orange bitters", "amount": 2, "unit": "dash"}], "instructions": "Stir with ice. Garnish with orange twist.", "original_notes": ""}, {"name": "Daiquiri", "category": "Rum / sour", "ingredients": [{"name": "Rum", "amount": 2, "unit": "oz", "sg": 0.95}, {"name": "Lime juice", "amount": 0.5, "unit": "oz", "sg": 1.03}, {"name": "Grapefruit juice", "amount": 0.5, "unit": "oz", "sg": 1.04}, {"name": "Maraschino liqueur", "amount": 0.25, "unit": "oz", "sg": 1.03}], "instructions": "Shake with ice and strain.", "original_notes": ""}, {"name": "Tom Collins", "category": "Gin / tall", "ingredients": [{"name": "Gin", "amount": 1.5, "unit": "oz", "sg": 0.95, "note": "Old Tom?"}, {"name": "Lemon juice", "amount": 1, "unit": "oz", "sg": 1.03}, {"name": "Simple syrup 1:1", "amount": 0.5, "unit": "oz", "sg": 1.18}, {"name": "Seltzer", "amount": 4, "unit": "oz", "sg": 1.0}], "instructions": "Mix gin, lemon, and simple syrup with ice, then top with seltzer.", "original_notes": ""}, {"name": "Aperol / Limoncello Spritz Template", "category": "Spritz", "ingredients": [{"name": "Prosecco", "amount": 3, "unit": "oz", "sg": 0.99}, {"name": "Aperol, limoncello, or Campari", "amount": 2, "unit": "oz", "sg": 1.04, "note": "SG depends on liqueur; estimate uses Aperol"}, {"name": "Soda water", "amount": 1, "unit": "oz", "sg": 1.0}], "instructions": "Build over ice and stir gently. Garnish with orange wheel for Aperol/Campari.", "original_notes": "Alternative batch note: 15 oz Prosecco + 5 oz seltzer mix, then 2 oz Aperol/limoncello/Campari + 4 oz mix."}, {"name": "Vieux Carré Redux", "category": "Whiskey / stirred", "ingredients": [{"name": "Rittenhouse bonded rye", "amount": 1, "unit": "oz", "sg": 0.95}, {"name": "Pierre Ferrand Cognac", "amount": 0.75, "unit": "oz", "sg": 0.95}, {"name": "Dolin Rouge vermouth", "amount": 0.75, "unit": "oz", "sg": 1.02}, {"name": "Bénédictine", "amount": 0.5, "unit": "tsp", "sg": 1.04}, {"name": "Angostura bitters", "amount": 2, "unit": "dash"}, {"name": "Peychaud’s bitters", "amount": 2, "unit": "dash"}], "instructions": "Stir with ice. Garnish with a lemon peel twist.", "original_notes": "Original note had Benedictine as 1/2 tsp (.15 oz)."}, {"name": "Little Italy", "category": "Whiskey / stirred", "ingredients": [{"name": "Rye whiskey", "amount": 1.5, "unit": "oz", "sg": 0.95}, {"name": "Sweet vermouth", "amount": 0.75, "unit": "oz", "sg": 1.02}, {"name": "Cynar amaro", "amount": 0.5, "unit": "oz", "sg": 1.06}], "instructions": "Stir with ice. Garnish with 2 Luxardo maraschino cherries.", "original_notes": "Parentheses in original looked like 4x ounce totals: rye (6), vermouth (3), Cynar (2)."}, {"name": "Hot Toddy", "category": "Hot drink", "ingredients": [{"name": "Hot rooibos or strong black tea", "amount": 6, "unit": "oz", "sg": 1.0}, {"name": "Bourbon", "amount": 1, "unit": "oz", "sg": 0.95}, {"name": "Cognac", "amount": 1, "unit": "oz", "sg": 0.95}, {"name": "Bénédictine", "amount": 0.5, "unit": "oz", "sg": 1.04}, {"name": "Angostura bitters", "amount": 2, "unit": "dash"}, {"name": "Whole nutmeg", "amount": 1, "unit": "whole"}, {"name": "Lemon wheel studded with cloves", "amount": 1, "unit": "garnish"}, {"name": "Cinnamon stick", "amount": 1, "unit": "garnish"}], "instructions": "Build with hot tea. Garnish with grated nutmeg, clove-studded lemon wheel, and cinnamon stick.", "original_notes": "Epicurious note."}, {"name": "Abbey Toddy", "category": "Hot drink", "ingredients": [{"name": "Bénédictine", "amount": 1.5, "unit": "oz", "sg": 1.04}, {"name": "Bourbon", "amount": 0.5, "unit": "oz", "sg": 0.95}, {"name": "Lemon juice", "amount": 0.5, "unit": "oz", "sg": 1.03}, {"name": "Honey syrup 50:50", "amount": 0.25, "unit": "oz", "sg": 1.2}, {"name": "Angostura bitters", "amount": 3, "unit": "dash"}, {"name": "Hot water", "amount": 4, "unit": "oz", "sg": 1.0}], "instructions": "Warm mug with hot water. Warm the mixed ingredients, discard mug water, pour mixture into mug, top with hot water, stir, and garnish with clove-studded lemon wheel.", "original_notes": ""}, {"name": "Sforzando", "category": "Whiskey / smoky", "glass": "Coupe", "ingredients": [{"name": "Rittenhouse rye", "amount": 1, "unit": "oz", "sg": 0.95}, {"name": "Del Maguey Chichicapa mezcal", "amount": 0.75, "unit": "oz", "sg": 0.95}, {"name": "Bénédictine", "amount": 0.5, "unit": "oz", "sg": 1.04}, {"name": "Dolin Dry vermouth", "amount": 0.5, "unit": "oz", "sg": 0.99}, {"name": "Bitterman’s Mole bitters", "amount": 2, "unit": "dash"}], "instructions": "Stir with ice. Strain into a coupe. Garnish with orange twist.", "original_notes": ""}, {"name": "San Gennaro", "category": "Whiskey / amaro", "ingredients": [{"name": "Bonded rye whiskey", "amount": 1, "unit": "oz", "sg": 0.95}, {"name": "Averna or Amaro Montenegro", "amount": 1, "unit": "oz", "sg": 1.06}, {"name": "Carpano Antica or sweet vermouth", "amount": 1, "unit": "oz", "sg": 1.03}, {"name": "Campari", "amount": 0.5, "unit": "tsp", "sg": 1.02}], "instructions": "Stir with ice. Garnish with 1–2 Luxardo maraschino cherries.", "original_notes": ""}, {"name": "Paper Plane", "category": "Bourbon / sour", "ingredients": [{"name": "Bourbon whiskey", "amount": 0.75, "unit": "oz", "sg": 0.95}, {"name": "Aperol", "amount": 0.75, "unit": "oz", "sg": 1.04}, {"name": "Italian amaro / Amaro Nonino", "amount": 0.75, "unit": "oz", "sg": 1.0}, {"name": "Lemon juice", "amount": 0.75, "unit": "oz", "sg": 1.03}], "instructions": "Shake with ice and strain.", "original_notes": "Equal parts."}, {"name": "My Smoky Manhattan", "category": "Whiskey / stirred", "ingredients": [{"name": "Bourbon", "amount": 42, "unit": "g", "sg": 0.95}, {"name": "Sweet vermouth", "amount": 21, "unit": "g", "sg": 1.02}, {"name": "Bitters", "amount": 1, "unit": "g"}, {"name": "Scotch", "amount": 6, "unit": "g", "sg": 0.95}], "instructions": "Stir with ice. Serve with cherry and a little cherry juice.", "original_notes": "Already by weight."}, {"name": "Aperol Paloma", "category": "Tequila / tall", "ingredients": [{"name": "Blanco tequila", "amount": 1.5, "unit": "oz", "sg": 0.95}, {"name": "Grapefruit juice", "amount": 1.75, "unit": "oz", "sg": 1.04}, {"name": "Aperol", "amount": 0.75, "unit": "oz", "sg": 1.04, "note": "Use ~0.6 oz / 40 g per 2 drinks if you want less"}, {"name": "Lime juice", "amount": 0.5, "unit": "oz", "sg": 1.03}, {"name": "Simple syrup 1:1", "amount": 0.5, "unit": "oz", "sg": 1.18, "note": "or 1 tsp sugar"}, {"name": "Seltzer", "amount": 2, "unit": "oz", "sg": 1.0}], "instructions": "Shake everything except seltzer with ice. Pour over ice and top with seltzer.", "original_notes": "Original heading says 2x and included weights: tequila 103g, grapefruit 120g, Aperol 51.5g or less 40g, lime 34.3g, seltzer 70g per 300."}, {"name": "Philly Sling", "category": "Fall cocktail", "ingredients": [{"name": "Apple brandy", "amount": 1.5, "unit": "oz", "sg": 0.95}, {"name": "Sloe gin", "amount": 1, "unit": "oz", "sg": 1.04}, {"name": "Lemon juice", "amount": 0.75, "unit": "oz", "sg": 1.03}, {"name": "Simple syrup 1:1", "amount": 0.25, "unit": "oz", "sg": 1.18, "note": "~0.5x of sugar"}, {"name": "Angostura bitters", "amount": 3, "unit": "dash"}], "instructions": "Fill mixing glass halfway with ice. Add ingredients and stir vigorously for 30 seconds. Strain into a cocktail glass.", "original_notes": "Original ratio note: 1:3:4:6."}, {"name": "Limoncello Spritz", "category": "Spritz", "ingredients": [{"name": "Limoncello", "amount": 2, "unit": "oz", "sg": 1.05}, {"name": "Prosecco", "amount": 3, "unit": "oz", "sg": 0.99}, {"name": "Soda water", "amount": 1, "unit": "oz", "sg": 1.0}], "instructions": "Build over ice and stir gently.", "original_notes": "By weight note: 57 g limoncello, 87 g Prosecco, 30 g soda. For two @ 1.5 oz limoncello: 86 g limoncello, 130 g Prosecco, 45 g soda."}, {"name": "Aperol Spritz", "category": "Spritz", "ingredients": [{"name": "Prosecco", "amount": 4, "unit": "oz", "sg": 0.99}, {"name": "Aperol", "amount": 2, "unit": "oz", "sg": 1.04}, {"name": "Soda water", "amount": 1, "unit": "oz", "sg": 1.0}], "instructions": "Build over ice and stir gently.", "original_notes": "Also had earlier 3:2:1 spritz template."}, {"name": "The Venetian Merchant", "category": "Gin / bitter sour", "ingredients": [{"name": "Gin", "amount": 1.5, "unit": "oz", "sg": 0.95}, {"name": "Aperol", "amount": 1, "unit": "oz", "sg": 1.04}, {"name": "Amaro Nonino", "amount": 0.5, "unit": "oz", "sg": 1.0}, {"name": "Lemon juice", "amount": 0.75, "unit": "oz", "sg": 1.03}], "instructions": "Shake with ice and strain.", "original_notes": "4x weight note: gin 169g, Aperol 123g, Amaro Nonino 59g, lemon 91g."}, {"name": "Coffee", "category": "Coffee notes", "ingredients": [{"name": "Water / mug", "amount": 429, "unit": "ml", "sg": 1.0}, {"name": "Coffee", "amount": 20, "unit": "g", "note": "or 28 g"}, {"name": "Coffee at Ocean Grove", "amount": 95, "unit": "g", "note": "12 cups"}, {"name": "Coffee at beach", "amount": 68, "unit": "g", "note": "9 cups water, grind 30"}], "instructions": "Reference notes only; scaling is available but may not be meaningful.", "original_notes": "429 ml mug + 1/3 cup; 20g or 28g. Ocean Grove: 12 cups, 95g. Beach: grind 30, 9 cups water + 68ish."}];
+const OZ_ML = 29.5735;
+const TSP_ML = 4.92892;
+
+let scale = Number(localStorage.drinkScale || 1);
+let showWeights = localStorage.showWeights === "true";
+let currentName = localStorage.currentDrink || BUILT_INS[0].name;
+let editOriginalName = null;
+
+function $(id) { return document.getElementById(id); }
+function customRecipes() { try { return JSON.parse(localStorage.customDrinkRecipes || "[]"); } catch(e) { return []; } }
+function allRecipes() {
+  const map = new Map();
+  BUILT_INS.forEach(r => map.set(r.name, r));
+  customRecipes().forEach(r => map.set(r.name, r));
+  return Array.from(map.values()).sort((a,b)=>a.name.localeCompare(b.name));
+}
+function findRecipe(name) { return allRecipes().find(r => r.name === name) || allRecipes()[0]; }
+function fmt(n) {
+  if (!Number.isFinite(n)) return "";
+  const v = Math.round(n * 100) / 100;
+  return Number.isInteger(v) ? String(v) : String(v).replace(/0+$/,"").replace(/\.$/,"");
+}
+function plural(unit, amount) {
+  if (Math.abs(amount) === 1) return unit;
+  if (["oz","g","ml","tsp","part"].includes(unit)) return unit;
+  if (unit === "dash") return "dashes";
+  return unit + "s";
+}
+function scaledAmount(ing) { return Number(ing.amount) * scale; }
+function volumeToGrams(ing, amount) {
+  if (!ing.sg) return null;
+  if (ing.unit === "oz" || ing.unit === "part") return amount * OZ_ML * ing.sg;
+  if (ing.unit === "tsp") return amount * TSP_ML * ing.sg;
+  if (ing.unit === "ml") return amount * ing.sg;
+  if (ing.unit === "g") return amount;
+  return null;
+}
+function amountText(ing) {
+  const a = scaledAmount(ing);
+  const base = `${fmt(a)} ${plural(ing.unit, a)}`;
+  const g = volumeToGrams(ing, a);
+  if (showWeights && g !== null) return `${base}<br><span class="small">${fmt(g)} g</span>`;
+  return base;
+}
+function renderSelect() {
+  const q = $("search").value.trim().toLowerCase();
+  const rs = allRecipes().filter(r => !q || [r.name,r.category,r.instructions,r.original_notes,(r.ingredients||[]).map(i=>i.name).join(" ")].join(" ").toLowerCase().includes(q));
+  $("recipeSelect").innerHTML = rs.map(r => `<option value="${escapeHtml(r.name)}" ${r.name===currentName?"selected":""}>${escapeHtml(r.name)}</option>`).join("");
+  if (rs.length && !rs.some(r=>r.name===currentName)) { currentName = rs[0].name; }
+}
+function escapeHtml(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function renderScale() {
+  $("scaleBtns").innerHTML = [1,2,3,4,5,6].map(n => `<button class="${n===scale?'active':''}" data-n="${n}">${n}×</button>`).join("");
+  document.querySelectorAll("#scaleBtns button").forEach(b => b.onclick = () => { scale = Number(b.dataset.n); localStorage.drinkScale = scale; render(); });
+}
+function renderRecipe() {
+  const r = findRecipe(currentName);
+  currentName = r.name;
+  localStorage.currentDrink = currentName;
+  $("batchLabel").textContent = `${scale} drink${scale>1?"s":""}`;
+  $("personalNotes").value = localStorage["drinkNotes:"+currentName] || "";
+  const rows = (r.ingredients||[]).map(ing => `
+    <tr>
+      <td>
+        ${escapeHtml(ing.name)} ${ing.optional ? '<span class="small">(optional)</span>' : ''}
+        ${ing.note ? `<div class="small">${escapeHtml(ing.note)}</div>` : ''}
+      </td>
+      <td class="qty">${amountText(ing)}</td>
+    </tr>`).join("");
+  $("recipeCard").innerHTML = `
+    <div class="between">
+      <div>
+        <h2>${escapeHtml(r.name)}</h2>
+        <div class="row">
+          ${r.category ? `<span class="pill">${escapeHtml(r.category)}</span>` : ""}
+          ${r.glass ? `<span class="pill">${escapeHtml(r.glass)}</span>` : ""}
+          ${r.garnish ? `<span class="pill">${escapeHtml(r.garnish)}</span>` : ""}
+        </div>
+      </div>
+    </div>
+    <h3>Ingredients</h3>
+    <table><thead><tr><th>Ingredient</th><th class="qty">Amount</th></tr></thead><tbody>${rows}</tbody></table>
+    <h3>Instructions</h3>
+    <div class="note">${escapeHtml(r.instructions || "No instructions yet.")}</div>
+    ${r.original_notes ? `<details><summary>Original / ambiguous notes</summary><div class="note small" style="margin-top:8px">${escapeHtml(r.original_notes)}</div></details>` : ""}
+  `;
+}
+function render() {
+  $("weightToggle").checked = showWeights;
+  renderSelect();
+  renderScale();
+  renderRecipe();
+}
+function recipeToLines(r) {
+  return (r.ingredients||[]).map(i => [i.amount, i.unit, i.name, i.sg ?? "", i.note ?? ""].join(" | ").replace(/( \| )+$/,"")).join("\n");
+}
+function openEditor(newRecipe=false) {
+  const r = newRecipe ? {name:"",category:"",glass:"",garnish:"",ingredients:[],instructions:"",original_notes:""} : findRecipe(currentName);
+  editOriginalName = newRecipe ? null : r.name;
+  $("editorTitle").textContent = newRecipe ? "Add recipe" : "Edit recipe";
+  $("eName").value = r.name || "";
+  $("eCategory").value = r.category || "";
+  $("eGlass").value = r.glass || "";
+  $("eGarnish").value = r.garnish || "";
+  $("eIngredients").value = recipeToLines(r);
+  $("eInstructions").value = r.instructions || "";
+  $("eOriginal").value = r.original_notes || "";
+  $("deleteBtn").classList.toggle("hidden", newRecipe || !customRecipes().some(x=>x.name===r.name));
+  $("editor").showModal();
+}
+function parseIngredients(text) {
+  return text.split(/\n+/).map(line => {
+    const p = line.split("|").map(s=>s.trim());
+    if (p.length < 3 || !p[0]) return null;
+    const amount = Number(p[0]);
+    if (!Number.isFinite(amount)) return null;
+    const obj = { amount, unit:p[1], name:p[2] };
+    if (p[3] && Number.isFinite(Number(p[3]))) obj.sg = Number(p[3]);
+    if (p[4]) obj.note = p[4];
+    return obj;
+  }).filter(Boolean);
+}
+function saveRecipe() {
+  const name = $("eName").value.trim();
+  if (!name) { alert("Recipe needs a name."); return; }
+  const r = {
+    name,
+    category:$("eCategory").value.trim(),
+    glass:$("eGlass").value.trim(),
+    garnish:$("eGarnish").value.trim(),
+    ingredients:parseIngredients($("eIngredients").value),
+    instructions:$("eInstructions").value.trim(),
+    original_notes:$("eOriginal").value.trim()
+  };
+  let customs = customRecipes().filter(x => x.name !== editOriginalName && x.name !== name);
+  customs.push(r);
+  localStorage.customDrinkRecipes = JSON.stringify(customs);
+  currentName = name;
+  $("editor").close();
+  render();
+}
+function deleteRecipe() {
+  let customs = customRecipes().filter(x => x.name !== currentName);
+  localStorage.customDrinkRecipes = JSON.stringify(customs);
+  currentName = BUILT_INS[0].name;
+  $("editor").close();
+  render();
+}
+function exportData() {
+  const backup = {
+    customRecipes: customRecipes(),
+    notes: Object.fromEntries(Object.keys(localStorage).filter(k=>k.startsWith("drinkNotes:")).map(k=>[k, localStorage[k]]))
+  };
+  $("backupText").value = JSON.stringify(backup, null, 2);
+  $("backupDialog").showModal();
+}
+function importData() {
+  try {
+    const data = JSON.parse($("backupText").value);
+    if (Array.isArray(data.customRecipes)) localStorage.customDrinkRecipes = JSON.stringify(data.customRecipes);
+    if (data.notes) Object.entries(data.notes).forEach(([k,v]) => { if(k.startsWith("drinkNotes:")) localStorage[k]=v; });
+    $("backupDialog").close(); render();
+  } catch(e) { alert("Could not parse backup JSON."); }
+}
+
+$("recipeSelect").onchange = e => { currentName = e.target.value; renderRecipe(); };
+$("search").oninput = render;
+$("weightToggle").onchange = e => { showWeights = e.target.checked; localStorage.showWeights = showWeights; renderRecipe(); };
+$("personalNotes").oninput = e => { localStorage["drinkNotes:"+currentName] = e.target.value; };
+$("editBtn").onclick = () => openEditor(false);
+$("addBtn").onclick = () => openEditor(true);
+$("cancelBtn").onclick = () => $("editor").close();
+$("saveBtn").onclick = saveRecipe;
+$("deleteBtn").onclick = deleteRecipe;
+$("exportBtn").onclick = exportData;
+$("importBtn").onclick = () => { $("backupText").value = ""; $("backupDialog").showModal(); };
+$("copyBackup").onclick = async () => { await navigator.clipboard.writeText($("backupText").value); $("copyBackup").textContent="Copied"; setTimeout(()=>$("copyBackup").textContent="Copy export",1200); };
+$("loadBackup").onclick = importData;
+
+render();
+</script>
+</body>
+</html>
